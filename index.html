@@ -187,6 +187,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     <div class="tab" onclick="showTab('meals',this)"><span class="tab-icon">🥩</span>Repas</div>
     <div class="tab" onclick="showTab('water',this)"><span class="tab-icon">💧</span>Eau</div>
     <div class="tab" onclick="showTab('stack',this)"><span class="tab-icon">💊</span>Stack</div>
+    <div class="tab" onclick="showTab('history',this)"><span class="tab-icon">📈</span>Suivi</div>
   </div>
 
   <div class="scroll">
@@ -238,6 +239,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
           <div style="display:flex;align-items:center;gap:12px;font-size:15px;color:var(--muted)" id="alcool-rappel"><span style="font-size:20px">🚫</span>Pas d'alcool en semaine</div>
         </div>
       </div>
+
+      <button onclick="cloturerJournee()" style="width:100%;margin-top:12px;padding:16px;background:var(--blue);border:none;border-radius:var(--radius);font-size:15px;font-weight:700;color:white;cursor:pointer;letter-spacing:0.02em">
+        Clôturer la journée →
+      </button>
     </div>
 
     <!-- SÉANCES -->
@@ -357,6 +362,43 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
           <div class="supp-item" onclick="toggleSupp(this,6)"><div class="supp-dot"></div><div><div class="supp-name">Oméga-3</div><div class="supp-dose">2–3g EPA/DHA · repas</div></div></div>
         </div>
         <div class="tip-text">Pharmacie Marie-Loup · Oméga-3 priorité si non commencé.</div>
+      </div>
+    </div>
+
+    <!-- HISTORIQUE -->
+    <div class="pane" id="pane-history">
+      <div id="history-empty" style="padding:40px 20px;text-align:center;color:var(--hint);font-size:14px;line-height:1.7">
+        Aucune journée clôturée pour l'instant.<br>Reviens ici après avoir clôturé ta première journée.
+      </div>
+      <div id="history-content" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          <div style="background:var(--card);border:0.5px solid var(--border);border-radius:var(--radius);padding:18px 14px;text-align:center">
+            <div style="font-size:28px;font-weight:800;color:var(--red)" id="avg-prot">—</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">Moy. protéines/jour</div>
+          </div>
+          <div style="background:var(--card);border:0.5px solid var(--border);border-radius:var(--radius);padding:18px 14px;text-align:center">
+            <div style="font-size:28px;font-weight:800;color:var(--blue)" id="avg-water">—</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">Moy. eau/jour (L)</div>
+          </div>
+          <div style="background:var(--card);border:0.5px solid var(--border);border-radius:var(--radius);padding:18px 14px;text-align:center">
+            <div style="font-size:28px;font-weight:800;color:var(--green)" id="avg-stack">—</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">Moy. stack/jour</div>
+          </div>
+          <div style="background:var(--card);border:0.5px solid var(--border);border-radius:var(--radius);padding:18px 14px;text-align:center">
+            <div style="font-size:28px;font-weight:800;color:var(--amber)" id="total-days">—</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">Jours trackés</div>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:var(--hint);letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px">Progression semaine par semaine</div>
+          <div id="week-bars"></div>
+        </div>
+
+        <div style="background:var(--card);border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:12px">
+          <div style="padding:13px 16px 11px;border-bottom:0.5px solid var(--border);font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase">Historique détaillé</div>
+          <div id="history-list"></div>
+        </div>
       </div>
     </div>
 
@@ -543,6 +585,129 @@ function toggleSupp(el,i){
   updateAll();save();
 }
 
+const KEY_HIST='daron_hist_v1';
+let history=[];
+
+function loadHistory(){try{history=JSON.parse(localStorage.getItem(KEY_HIST)||'[]');}catch(e){history=[];}}
+function saveHistory(){try{localStorage.setItem(KEY_HIST,JSON.stringify(history));}catch(e){}}
+
+function cloturerJournee(){
+  const p=calcProt();
+  const w=state.water;
+  const s=state.supps.filter(Boolean).length;
+  const wdays=getWeekDays();
+  let seances=0;
+  wdays.forEach(d=>{const k=dayKey(d);if(sessions[k])seances+=Object.values(sessions[k]).filter(Boolean).length;});
+
+  const snap={
+    date:todayKey(),
+    prot:p,
+    water:parseFloat(w.toFixed(1)),
+    stack:s,
+    seances:seances
+  };
+
+  const existing=history.findIndex(h=>h.date===snap.date);
+  if(existing>=0)history[existing]=snap;
+  else history.unshift(snap);
+
+  saveHistory();
+  renderHistory();
+
+  state={water:0,supps:new Array(7).fill(false),meals:[]};
+  document.querySelectorAll('.meal-item').forEach(el=>{el.classList.remove('active');el.querySelector('.meal-check').classList.remove('on');});
+  document.querySelectorAll('.supp-item').forEach(el=>el.classList.remove('on'));
+  localStorage.removeItem(KEY);
+  updateAll();
+  toast('Journée clôturée et archivée ✓');
+}
+
+function getWeekLabel(dateStr){
+  const [y,m,d]=dateStr.split('-');
+  const date=new Date(y,m-1,d);
+  const dow=date.getDay();
+  const monday=new Date(date);
+  monday.setDate(date.getDate()-(dow===0?6:dow-1));
+  const sunday=new Date(monday);sunday.setDate(monday.getDate()+6);
+  const fmt=d=>d.getDate()+'/'+(d.getMonth()+1);
+  return fmt(monday)+' – '+fmt(sunday);
+}
+
+function groupByWeek(hist){
+  const weeks={};
+  hist.forEach(h=>{
+    const [y,m,d]=h.date.split('-');
+    const date=new Date(y,m-1,d);
+    const dow=date.getDay();
+    const mon=new Date(date);mon.setDate(date.getDate()-(dow===0?6:dow-1));
+    const wk=dayKey(mon);
+    if(!weeks[wk])weeks[wk]={label:getWeekLabel(h.date),days:[],key:wk};
+    weeks[wk].days.push(h);
+  });
+  return Object.values(weeks).sort((a,b)=>b.key.localeCompare(a.key));
+}
+
+function renderHistory(){
+  if(!history.length){
+    document.getElementById('history-empty').style.display='block';
+    document.getElementById('history-content').style.display='none';
+    return;
+  }
+  document.getElementById('history-empty').style.display='none';
+  document.getElementById('history-content').style.display='block';
+
+  const avgP=Math.round(history.reduce((s,h)=>s+h.prot,0)/history.length);
+  const avgW=(history.reduce((s,h)=>s+h.water,0)/history.length).toFixed(1);
+  const avgS=(history.reduce((s,h)=>s+h.stack,0)/history.length).toFixed(1);
+  document.getElementById('avg-prot').textContent=avgP+'g';
+  document.getElementById('avg-water').textContent=avgW+'L';
+  document.getElementById('avg-stack').textContent=avgS+'/7';
+  document.getElementById('total-days').textContent=history.length;
+
+  const weeks=groupByWeek(history);
+  let wh='';
+  weeks.forEach(w=>{
+    const avgProt=Math.round(w.days.reduce((s,h)=>s+h.prot,0)/w.days.length);
+    const totalSess=w.days[0]?w.days[0].seances:0;
+    const protPct=Math.min(100,Math.round(avgProt/170*100));
+    const sessPct=Math.min(100,Math.round(totalSess/5*100));
+    wh+=`<div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:12px;font-weight:600;color:var(--text)">${w.label}</span>
+        <span style="font-size:11px;color:var(--hint)">${w.days.length} jour${w.days.length>1?'s':''}</span>
+      </div>
+      <div style="margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px"><span>Protéines moy.</span><span>${avgProt}g</span></div>
+        <div style="height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:100%;width:${protPct}%;background:var(--red);border-radius:3px"></div></div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px"><span>Séances</span><span>${totalSess}/5</span></div>
+        <div style="height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:100%;width:${sessPct}%;background:var(--amber);border-radius:3px"></div></div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('week-bars').innerHTML=wh;
+
+  const MOIS=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  let lh='';
+  history.slice(0,14).forEach(h=>{
+    const [y,m,d]=h.date.split('-');
+    const label=d+' '+MOIS[m-1];
+    const protPct=Math.min(100,Math.round(h.prot/170*100));
+    const color=protPct>=100?'var(--green)':'var(--red)';
+    lh+=`<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:0.5px solid var(--border)">
+      <div style="font-size:12px;color:var(--muted);min-width:44px">${label}</div>
+      <div style="flex:1">
+        <div style="height:4px;background:var(--bg3);border-radius:2px;overflow:hidden"><div style="height:100%;width:${protPct}%;background:${color};border-radius:2px"></div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);min-width:36px;text-align:right">${h.prot}g</div>
+      <div style="font-size:12px;color:var(--blue);min-width:28px;text-align:right">${h.water}L</div>
+      <div style="font-size:12px;color:var(--amber);min-width:24px;text-align:right">${h.stack}/7</div>
+    </div>`;
+  });
+  document.getElementById('history-list').innerHTML=lh||'<div style="padding:16px;color:var(--hint);font-size:13px">Aucune donnée</div>';
+}
+
 function showTab(id,tab){
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -567,7 +732,7 @@ function toast(msg){
 
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
 
-loadSessions();load();updateAll();renderWeekStrip();loadSessionsForDay(todayKey());
+loadSessions();load();loadHistory();updateAll();renderWeekStrip();loadSessionsForDay(todayKey());renderHistory();
 </script>
 </body>
 </html>
