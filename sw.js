@@ -1,5 +1,11 @@
-const CACHE = 'daron-v1';
-const ASSETS = ['/', '/index.html', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
+const CACHE = 'daron-solide-v1';
+const ASSETS = [
+  '/DARON-SOLIDE-APP/',
+  '/DARON-SOLIDE-APP/index.html',
+  '/DARON-SOLIDE-APP/manifest.json',
+  '/DARON-SOLIDE-APP/icon-192.png',
+  '/DARON-SOLIDE-APP/icon-512.png'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
